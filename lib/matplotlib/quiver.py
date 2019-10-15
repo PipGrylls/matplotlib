@@ -482,7 +482,7 @@ class Quiver(mcollections.PolyCollection):
                  scale=None, headwidth=3, headlength=5, headaxislength=4.5,
                  minshaft=1, minlength=1, units='width', scale_units=None,
                  angles='uv', width=None, color='k', pivot='tail',
-                 head_pos='tip', **kw):
+                 head_pos='snake', **kw):
         """
         The constructor takes one required argument, an Axes
         instance, followed by the args and kwargs described
@@ -514,17 +514,21 @@ class Quiver(mcollections.PolyCollection):
             self.head_pos = 1.0
         elif (head_pos == "mid") or (head_pos == "middle"):
             self.head_pos = 0.5
+        elif head_pos == "snake":
+            self.head_pos = 5  # BECAUSE 5 IS THE SNAKIEST NUMBER
         elif type(head_pos) == float:
             if 0.0 < head_pos < 1.0:
                 self.head_pos = head_pos
             else:
                 raise ValueError("'head_pos' must be "
                                  "a value in the bounds 0<mid_scale<1,"
-                                 "or a string in {'tail', 'middle', 'tip'}")
+                                 "or a string in "
+                                 "{'tail', 'middle', 'tip', 'snake}")
         else:
             raise ValueError("'head_pos' must be "
                              "a value in the bounds 0<mid_scale<1,"
-                             "or a string in {'tail', 'middle', 'tip'}")
+                             "or a string in "
+                             "{'tail', 'middle', 'tip', 'snake'}")
 
         if pivot.lower() == 'mid':
             pivot = 'middle'
@@ -768,6 +772,9 @@ class Quiver(mcollections.PolyCollection):
         minsh = self.minshaft * self.headlength
         N = len(length)
         length = length.reshape(N, 1)
+        segments = np.round(length, 0).astype("int")
+        np.copyto(segments, 5, where=segments > 5)
+        print(np.max(segments), np.max(length))
         # This number is chosen based on when pixel values overflow in Agg
         # causing rendering errors
         # length = np.minimum(length, 2 ** 16)
@@ -811,10 +818,51 @@ class Quiver(mcollections.PolyCollection):
             Y[:, 3] = np.ones(np.shape(Y[:, 3])) * 0.5
             Y[:, 6] = np.ones(np.shape(Y[:, 6])) * 0.5
             Y[:, 5:-1] *= -1
+        elif self.head_pos == 5:
+            head_x = np.array(
+                [0, 1, 4, 5, 4.75, 4.9, 4.9, 4.6, 4.6, 4.75, 5, 6, 6])
+            head_y = np.array(
+                [1, 1, 2, 1.25, 1, 1, 0.7, 0.7, 1, 1, 1.25, 0.5, 0.1])
+            tounge_x = np.array([7, 8, 8.6, 9, 8.6, 9, 8, 7])
+            tounge_y = np.array([-0.2, 0.4, 0.1, 0.3, 0, -0.3, 0.2, -0.4])
+            body_x = np.array(
+                [-2 - 4 * i for i in range(1, 2 * np.max(segments) + 1)])
+            body_y = np.array([-2, 0]*np.max(segments))
+            tail_x = np.array(
+                [-4 - 8 * np.max(segments), -7 - 8 * np.max(segments),
+                 -4 - 8 * np.max(segments)])
+            tail_y = np.array([-1, 0, 1])
+            x_length = (np.max(tounge_x) - np.min(tail_x))
+            X_corr = (np.max(tounge_x) - x_length/2)
+
+            X = (np.concatenate((np.array([-2]),
+                                           head_x,
+                                           tounge_x,
+                                           np.flip(head_x),
+                                           np.array([-2]),
+                                           body_x,
+                                           tail_x,
+                                           np.flip(body_x),
+                                           np.array([-2])
+                                           )) - X_corr) * (length/(x_length*2))
+            Y = np.repeat(np.concatenate((np.array([2]),
+                                          head_y,
+                                          tounge_y,
+                                          -np.flip(head_y),
+                                          np.array([0]),
+                                          body_y,
+                                          tail_y,
+                                          np.flip(body_y) + 2,
+                                          np.array([2])
+                                          ))[np.newaxis, :], N, axis=0)\
+                * (length/(x_length*2))
+            ii_min = [0, 1, 2, 3, 2, 1, 0, 0, 0]
+            ii_min += [0 for i in range(0, np.shape(X)[1] - np.shape(ii_min)[0], 1)]
+            ii_min = np.array(ii_min)
         else:
             raise ValueError("'head_pos' must be "
                              "a value in the bounds 0<mid_scale<1,"
-                             "or a string in {'tail', 'middle', 'tip'}")
+                             "or a string in {'tail','middle','tip','snake'}")
         X0 = x0[ii_min]
         Y0 = y0[ii_min]
         Y0[3:-1] *= -1
